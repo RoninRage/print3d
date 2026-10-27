@@ -1,0 +1,14 @@
+Pinned Bambu Studio profiles for Bambu Lab A1 0.4 mm.
+
+Studio version: 02.08.02.61 (profiles 02.08.00.06)
+Source tree: ~/.config/BambuStudio/system/BBL
+Machine: Bambu Lab A1 0.4 nozzle
+Process: 0.20mm Standard @BBL A1
+Filament: Bambu PLA Basic @BBL A1
+Bed: Textured PEI Plate
+
+These JSON files are flattened (inherits + include resolved, from=User)
+because the Studio CLI does not walk the GUI inheritance chain.
+
+Rebuild with: python -m print3d --printer a1-0.4 flatten
+Golden cube slice: tests/fixtures/cube_20mm_a1.gcode.3mf (100 layers, 3.72 g, 19m 20s)

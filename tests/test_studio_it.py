@@ -151,3 +151,13 @@ def test_hinged_tin_from_a_museum_photo(tmp_path: Path, monkeypatch):
     }
     assert {f["color"] for f in report["filaments"]} == {"gold", "black"}
     assert len(report["plates"]) == 1
+
+
+def test_a1_cube_slice(tmp_path: Path, cube_stl: Path):
+    from print3d.printers import get_printer
+
+    report = run_job("a1 cube", mesh=cube_stl, jobs_dir=tmp_path, execute=True,
+                     printer=get_printer("a1-0.4"))
+    assert report["status"] == "ready_for_review", report["advice"]
+    assert report["printer"]["id"] == "a1-0.4"
+    assert report["slice_metrics"]["layer_count"] == 100
