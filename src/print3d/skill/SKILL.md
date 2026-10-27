@@ -1,11 +1,11 @@
 ---
 name: print3d
-description: Model a part in Blender from an idea, a photo of an object, or the shop listing of something you would otherwise buy, slice it for the Bambu X2D, and iterate until it prints clean and matches the photo.
+description: Model a part in Blender from an idea, a photo of an object, or the shop listing of something you would otherwise buy, slice it for a Bambu Lab X2D or A1, and iterate until it prints clean and matches the photo.
 argument-hint: "[what to make, a photo of the object, or a shop link]"
 disable-model-invocation: true
 ---
 
-# /print3d — idea to a printable X2D part
+# /print3d — idea to a printable Bambu Lab part
 
 `print3d` below is the print3d command line. When the shell cannot find it, the
 print3d MCP tools of the same names do the same work. A job's files live in the
@@ -78,7 +78,7 @@ asks for.
 print3d make "<prompt>"
 ```
 
-Models, DFM-checks, slices with the pinned X2D presets, and reports. The run is
+Models, DFM-checks, slices with the active printer's pinned presets, and reports. The run is
 **red** when `severity` is `error` — exit code 1, `status: needs_work`.
 
 While red: read `advice`, apply the `fix` each note carries to `model.py`, run
@@ -133,7 +133,16 @@ and the print sheet.
 
 ## The machine
 
-X2D, 0.4 mm nozzle, 256 × 256 × 260 mm bed, 0.20 mm layers, Bambu PLA Basic,
-textured PEI plate. **The pinned process has supports off** — that is why an
-overhang note is a real defect and not a setting to flip. Two nozzles: two
-colours print without a filament change.
+The X2D by default, or the A1 when `PRINT3D_PRINTER=a1-0.4` (or
+`print3d --printer a1-0.4 ...`). `print3d status` and every run's `printer`
+field say which one is active.
+
+| | X2D | A1 |
+|---|---|---|
+| Bed | 256 × 256 × 260 mm | 256 × 256 × 256 mm |
+| Nozzles | two: two colours without a filament change | one: every colour change purges |
+| Colours per job | as many as the AMS holds | up to 4 (AMS lite); more is an error |
+
+Both: 0.4 mm nozzle, 0.20 mm layers, Bambu PLA Basic, textured PEI plate.
+**The pinned process has supports off** — that is why an overhang note is a real
+defect and not a setting to flip.

@@ -19,10 +19,10 @@ from typing import Any
 from print3d.blender import BlenderError, run_model_script, scaffold_script
 from print3d.brief import PrintBrief, parse_brief
 from print3d.dfm import check_mesh, require_printable
-from print3d.filaments import DEFAULT_COLOUR, NOZZLES, colour_hex, job_filaments
+from print3d.filaments import DEFAULT_COLOUR, colour_hex, job_filaments
 from print3d.fits import fit_advice, load_fits
 from print3d.likeness import check_likeness, likeness_advice
-from print3d.paths import default_jobs_dir, default_profiles_dir
+from print3d.paths import default_jobs_dir
 from print3d.printability import (
     Advice,
     advise,
@@ -34,6 +34,7 @@ from print3d.printability import (
     with_clean,
     worst_severity,
 )
+from print3d.printers import Printer, active_printer
 from print3d.project import extract_plate_png, inspect_project
 from print3d.spec import load_spec, model_dims
 from print3d.studio import SliceRequest, assemble_list, run_slice, slice_plan
@@ -86,6 +87,33 @@ def _append_history(job_dir: Path, entry: dict[str, Any]) -> None:
         handle.write(json.dumps(entry) + "\n")
 
 
+def colour_advice(count: int, printer: Printer) -> list[Advice]:
+    """More colours than the printer can hold is an error; more than its nozzles, a purge note."""
+    if count > printer.max_filaments:
+        return [
+            Advice(
+                "colours",
+                "error",
+                f"{count} colours, but the {printer.display} takes at most {printer.max_filaments} "
+                "filaments in one job.",
+                f"Give parts the same colour until there are {printer.max_filaments} or fewer.",
+            )
+        ]
+    if count > printer.nozzles:
+        nozzles = "one nozzle" if printer.nozzles == 1 else f"{printer.nozzles} nozzles"
+        return [
+            Advice(
+                "colours",
+                "note",
+                f"{count} colours on {nozzles}: Studio swaps filament within a nozzle, "
+                "purging at every change.",
+                "Fine with an AMS; otherwise keep to "
+                + ("one colour per plate." if printer.nozzles == 1 else f"{printer.nozzles} colours per plate."),
+            )
+        ]
+    return []
+
+
 def run_job(
     prompt: str,
     *,
@@ -95,18 +123,25 @@ def run_job(
     execute: bool = True,
     jobs_dir: Path | None = None,
     profiles_dir: Path | None = None,
+    printer: Printer | None = None,
 ) -> dict[str, Any]:
+    printer = printer or active_printer()
     brief = parse_brief(prompt, color=color)
     job_dir = (jobs_dir or default_jobs_dir()) / brief.slug
     job_dir.mkdir(parents=True, exist_ok=True)
-    profiles = profiles_dir or default_profiles_dir()
+    profiles = profiles_dir or printer.profiles_dir
     for required in ("machine.json", "process.json", "filament.json"):
         if not (profiles / required).is_file():
             raise PipelineError(
-                f"Pinned profile missing: {profiles / required}. Run: python -m print3d flatten"
+                f"Pinned profile missing: {profiles / required}. "
+                f"Run: python -m print3d --printer {printer.id} flatten"
             )
 
-    report: dict[str, Any] = {"brief": brief.as_dict(), "job_dir": str(job_dir)}
+    report: dict[str, Any] = {
+        "brief": brief.as_dict(),
+        "job_dir": str(job_dir),
+        "printer": {"id": printer.id, "display": printer.display, "bed_mm": list(printer.bed_mm)},
+    }
     fits = load_fits()
     spec = load_spec(job_dir)
     if spec["dims"] or spec["unknowns"]:
@@ -135,10 +170,10 @@ def run_job(
         report["model"]["source"] = "blender"
 
     if report["model"].get("parts"):
-        return _run_parts(brief, job_dir, profiles, spec, fits, mesh_path, report, execute)
+        return _run_parts(brief, job_dir, profiles, spec, fits, mesh_path, report, execute, printer)
 
     # 3. Is it even a solid?
-    dfm = require_printable(mesh_path)
+    dfm = require_printable(mesh_path, bed_mm=printer.bed_mm, printer=printer.display)
     report["dfm"] = dfm.as_dict()
     mesh_metrics = analyze_mesh(mesh_path)
     report["mesh_metrics"] = mesh_metrics
@@ -163,6 +198,7 @@ def run_job(
         # Auto-orient would silently rotate the part and invalidate every
         # overhang note below. Orientation is the model script's business.
         orient=False,
+        bed_type=printer.bed_type,
     )
     report["slice_plan"] = slice_plan(request)
 
@@ -235,6 +271,7 @@ def _run_parts(
     assembly: Path,
     report: dict[str, Any],
     execute: bool,
+    printer: Printer,
 ) -> dict[str, Any]:
     """Several printed parts: a check per printed object, fits between them, one slice for all."""
     model = report["model"]
@@ -264,7 +301,7 @@ def _run_parts(
     errors: list[str] = []
     metrics: dict[str, dict[str, Any]] = {}
     for obj in model["objects"]:
-        dfm = check_mesh(Path(obj["stl"]))
+        dfm = check_mesh(Path(obj["stl"]), bed_mm=printer.bed_mm, printer=printer.display)
         errors.extend(f"{obj['name']}: {error}" for error in dfm.errors)
         metrics[obj["name"]] = analyze_mesh(Path(obj["stl"]))
         notes.extend(mesh_advice(metrics[obj["name"]], part=obj["name"]))
@@ -282,16 +319,7 @@ def _run_parts(
         )
     if errors:
         raise PipelineError("; ".join(errors))
-    if len(colours) > NOZZLES:
-        notes.append(
-            Advice(
-                "colours",
-                "note",
-                f"{len(colours)} colours on {NOZZLES} nozzles: Studio swaps filament within a nozzle, "
-                "purging at every change.",
-                "Fine with an AMS; otherwise keep to two colours per plate.",
-            )
-        )
+    notes.extend(colour_advice(len(colours), printer))
     report["mesh_metrics"] = metrics
 
     likeness = check_likeness(assembly, spec, job_dir / "likeness")
@@ -342,6 +370,7 @@ def _run_parts(
         datadir=job_dir / "studio-datadir",
         output_dir=slice_dir,
         orient=False,
+        bed_type=printer.bed_type,
         assemble_list=assemble,
     )
     report["slice_plan"] = slice_plan(request)

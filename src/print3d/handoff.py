@@ -19,7 +19,7 @@ from typing import Any
 from print3d.blender import BlenderError
 from print3d.filaments import DEFAULT_COLOUR, colour_hex
 from print3d.fits import load_fits
-from print3d.paths import default_profiles_dir
+from print3d.printers import DEFAULT_PRINTER, Printer, PrinterError, active_printer, get_printer
 from print3d.render import render_parts
 from print3d.spec import load_spec
 
@@ -81,8 +81,17 @@ def _parts(report: dict[str, Any], slug: str) -> list[dict[str, Any]]:
     ]
 
 
-def _cost_per_kg() -> float:
-    profile = json.loads((default_profiles_dir() / "filament.json").read_text(encoding="utf-8"))
+def _job_printer(report: dict[str, Any]) -> Printer:
+    """The printer the job was sliced for. Reports from before printer support are X2D."""
+    try:
+        return get_printer((report.get("printer") or {}).get("id") or DEFAULT_PRINTER)
+    except PrinterError:
+        return active_printer()
+
+
+def _cost_per_kg(report: dict[str, Any]) -> float:
+    path = _job_printer(report).profiles_dir / "filament.json"
+    profile = json.loads(path.read_text(encoding="utf-8"))
     return float(profile["filament_cost"][0])
 
 
@@ -160,7 +169,7 @@ def build_handoff(
 
     metrics = report.get("slice_metrics", {})
     grams = metrics.get("filament_g")
-    per_kg = cost_per_kg if cost_per_kg is not None else _cost_per_kg()
+    per_kg = cost_per_kg if cost_per_kg is not None else _cost_per_kg(report)
     cost = grams * per_kg / 1000.0 if grams is not None else None
     money = (lambda v: f"{v:.2f} {_esc(currency)}".strip())
     listing = report.get("listing") or spec.get("listing")
@@ -312,7 +321,7 @@ footer {{ margin-top:32px; color:var(--muted); font-size:12px; border-top:1px so
 <header>
   <div>
     <h1>{_esc(report["brief"]["prompt"])}</h1>
-    <p class="sub">{_esc(slug)} · {time.strftime("%Y-%m-%d")} · Bambu Lab X2D, 0.4 mm nozzle, 0.20 mm layers,
+    <p class="sub">{_esc(slug)} · {time.strftime("%Y-%m-%d")} · {_esc(_job_printer(report).display)}, 0.4 mm nozzle, 0.20 mm layers,
     Bambu PLA Basic, textured PEI, supports off</p>
     {replaces}
   </div>

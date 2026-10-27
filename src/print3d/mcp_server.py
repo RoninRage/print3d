@@ -29,7 +29,8 @@ from print3d.printability import advise, analyze_mesh, analyze_slice
 
 INSTRUCTIONS = """\
 print3d turns an idea, or a photo of an object, into a Bambu Studio project for a
-Bambu Lab X2D. You write a Blender (bpy) model script; `make` runs it, checks the
+Bambu Lab printer: the X2D by default, or the A1 when PRINT3D_PRINTER=a1-0.4
+(each run's report names the printer and its bed). You write a Blender (bpy) model script; `make` runs it, checks the
 mesh, slices it and returns advice, each note with the fix to apply to the script.
 Iterate until no note is at `error`, then hand the user the .3mf path.
 

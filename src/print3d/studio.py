@@ -49,6 +49,10 @@ def find_studio(search_path: str | None = None) -> Path:
         [
             "/opt/homebrew/bin/bambu-studio",
             "/Applications/BambuStudio.app/Contents/MacOS/BambuStudio",
+            "/usr/bin/bambu-studio",
+            "/usr/local/bin/bambu-studio",
+            "/var/lib/flatpak/exports/bin/com.bambulab.BambuStudio",
+            str(Path.home() / ".local/share/flatpak/exports/bin/com.bambulab.BambuStudio"),
         ]
     )
     for candidate in candidates:

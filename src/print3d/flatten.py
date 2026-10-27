@@ -12,6 +12,8 @@ import re
 from pathlib import Path
 from typing import Any, Iterable, Literal
 
+from print3d.printers import Printer
+
 ProfileKind = Literal["machine", "process", "filament"]
 META_SKIP = {"inherits", "include", "instantiation", "setting_id", "is_custom_defined"}
 NOZZLE_SUFFIX_RE = re.compile(r"\s+\d+\.\d+\s+nozzle.*$")
@@ -32,6 +34,10 @@ def detect_profiles_root(slicer_path: str | None = None) -> Path:
     if env_root:
         candidates.append(Path(env_root).expanduser())
     candidates.append(Path.home() / "Library/Application Support/BambuStudio/system")
+    candidates.append(Path.home() / ".config/BambuStudio/system")
+    candidates.append(
+        Path.home() / ".var/app/com.bambulab.BambuStudio/config/BambuStudio/system"
+    )
     if slicer_path:
         slicer = Path(slicer_path).resolve()
         candidates.append(slicer.parent.parent / "Resources" / "profiles")
@@ -222,6 +228,34 @@ def write_profile(path: Path, data: dict[str, Any]) -> Path:
     return path
 
 
+def profiles_version(profiles_root: Path, vendor: str = "BBL") -> str | None:
+    """The vendor profile bundle version from <root>/BBL.json, if present."""
+    try:
+        version = load_json(profiles_root / f"{vendor}.json").get("version")
+    except (OSError, json.JSONDecodeError, FlattenError):
+        return None
+    return version if isinstance(version, str) else None
+
+
+def flatten_printer(
+    printer: Printer,
+    *,
+    output_dir: Path | None = None,
+    profiles_root: Path | None = None,
+    slicer_path: str | None = None,
+) -> dict[str, Any]:
+    """Flatten a known printer's presets into its pinned folder (or output_dir)."""
+    return flatten_x2d(
+        profiles_root=profiles_root,
+        output_dir=output_dir or printer.profiles_dir,
+        machine_leaf=printer.machine,
+        process_leaf=printer.process,
+        filament_leaves=[printer.filament],
+        bed_type=printer.bed_type,
+        slicer_path=slicer_path,
+    )
+
+
 def flatten_x2d(
     *,
     profiles_root: Path | None = None,
@@ -251,6 +285,8 @@ def flatten_x2d(
         ensure_machine_in_compat(filament, machine_leaf)
     ensure_machine_in_compat(process, machine_leaf)
     process["curr_bed_type"] = bed_type
+    # The printability checks assume no supports; keep that true whatever the preset says.
+    process["enable_support"] = "0"
 
     output_dir.mkdir(parents=True, exist_ok=True)
     machine_path = write_profile(output_dir / "machine.json", machine)
@@ -262,6 +298,7 @@ def flatten_x2d(
 
     provenance = {
         "profiles_root": _home_relative(root),
+        "profiles_version": profiles_version(root),
         "machine": machine_leaf,
         "process": process_leaf,
         "filaments": filaments,

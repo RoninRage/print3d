@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -12,13 +13,14 @@ from print3d.brief import parse_brief
 from print3d import setup as installer
 from print3d import spec as specs
 from print3d.fits import KINDS, load_fits, save_fits
-from print3d.flatten import flatten_x2d
+from print3d.flatten import flatten_printer
 from print3d.handoff import build_handoff
 from print3d.likeness import check_job
 from print3d.paths import coupon_script, default_profiles_dir, job_path, safe_name
 from print3d.photo import grid, meet
 from print3d.pipeline import _model_params, run_job
 from print3d.printability import advise, analyze_mesh, analyze_slice
+from print3d.printers import PRINTER_ENV, PRINTERS, active_printer, get_printer
 from print3d.project import inspect_project
 from print3d.studio import SliceRequest, find_studio, slice_plan
 from print3d.viewer import build_viewer
@@ -220,18 +222,29 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
 
 def cmd_flatten(args: argparse.Namespace) -> int:
-    _print_json(flatten_x2d(output_dir=Path(args.output) if args.output else default_profiles_dir()))
+    _print_json(
+        flatten_printer(
+            active_printer(),
+            output_dir=Path(args.output) if args.output else None,
+            profiles_root=Path(args.source).expanduser() if args.source else None,
+        )
+    )
     return 0
 
 
 def cmd_status(_args: argparse.Namespace) -> int:
-    profiles = default_profiles_dir()
+    printer = active_printer()
+    profiles = printer.profiles_dir
     try:
         blender = str(find_blender())
     except BlenderError as exc:
         blender = f"missing: {exc}"
     _print_json(
         {
+            "printer": printer.id,
+            "printer_display": printer.display,
+            "bed_mm": list(printer.bed_mm),
+            "printers": list(PRINTERS),
             "blender": blender,
             "studio": str(find_studio()),
             "profiles": str(profiles),
@@ -263,7 +276,13 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="print3d", description="Idea to a reviewable Bambu Studio project for an X2D"
+        prog="print3d",
+        description="Idea to a reviewable Bambu Studio project for a Bambu Lab printer",
+    )
+    parser.add_argument(
+        "--printer",
+        choices=list(PRINTERS),
+        help=f"Printer to model and slice for (default: ${PRINTER_ENV}, else x2d-0.4)",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -393,8 +412,9 @@ def build_parser() -> argparse.ArgumentParser:
     setup_cmd.add_argument("--yes", action="store_true", help="Apply without asking")
     setup_cmd.set_defaults(func=cmd_setup)
 
-    flatten_cmd = sub.add_parser("flatten", help="Rebuild pinned X2D Studio profiles")
+    flatten_cmd = sub.add_parser("flatten", help="Rebuild the active printer's pinned Studio profiles")
     flatten_cmd.add_argument("--output")
+    flatten_cmd.add_argument("--source", help="Bambu Studio profiles root (the folder holding BBL/)")
     flatten_cmd.set_defaults(func=cmd_flatten)
 
     status_cmd = sub.add_parser("status", help="Show Blender, slicer and profile paths")
@@ -410,6 +430,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.printer:
+            os.environ[PRINTER_ENV] = get_printer(args.printer).id
         return args.func(args)
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)

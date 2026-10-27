@@ -2,7 +2,7 @@
 
 A [Hermes Agent](https://github.com/NousResearch/hermes-agent) plugin that turns
 an idea, a photo of an object, or the shop listing of something you would
-otherwise buy into a Bambu Studio project for a **Bambu Lab X2D (0.4 mm
+otherwise buy into a Bambu Studio project for a **Bambu Lab X2D or A1 (0.4 mm
 nozzle)**. One part or several, in one colour or two, with fits measured against
 your own printer, a 3D view to turn the result around in, and a print sheet to
 hand on. It also works with Claude Code, Codex, Cursor and Gemini CLI.
@@ -138,6 +138,24 @@ This models, checks, slices and prints a JSON report, and exits 1 if any check
 fails. Without `--script`, it writes a starter `jobs/<slug>/model.py` for you to
 fill in and run again.
 
+### Choosing the printer
+
+The X2D is the default. For the A1 (one nozzle, AMS lite, 256 × 256 × 256 mm):
+
+```bash
+print3d --printer a1-0.4 make "..."     # one command
+export PRINT3D_PRINTER=a1-0.4           # every command, and the MCP server
+```
+
+An agent's MCP server reads `PRINT3D_PRINTER` from its environment, so set it
+where the agent starts the server, e.g. for Claude Code:
+`claude mcp add print3d -e PRINT3D_PRINTER=a1-0.4 -- print3d mcp`. `print3d
+status` names the active printer. The pinned presets live in
+`src/print3d/profiles/<printer>/`; `print3d --printer a1-0.4 flatten` rebuilds
+them from Bambu Studio's profiles, found on macOS, in `~/.config/BambuStudio`
+and in the Flatpak on Linux, or wherever `--source`/`BAMBU_PROFILES_ROOT`
+points.
+
 | Command | What it does |
 | --- | --- |
 | `make "<prompt>"` | Model, check and slice; writes `jobs/<slug>/` |
@@ -154,8 +172,8 @@ fill in and run again.
 | `coupon` | Slice the fit coupon that calibrates your printer's clearances |
 | `fit show` / `fit set` | The clearance per fit that scripts get as `params["fit"]`, and recording yours |
 | `plan model.stl out.gcode.3mf` | Show the Studio command without running it |
-| `status` | Where Blender and Studio were found |
-| `flatten` | Rebuild the X2D presets in `src/print3d/profiles/x2d-0.4/` |
+| `status` | The active printer, and where Blender and Studio were found |
+| `flatten` | Rebuild the active printer's presets in `src/print3d/profiles/<printer>/` (`--source` for a profiles folder) |
 | `setup` | Register print3d with your agents |
 | `mcp` | Run the MCP server on stdio (agents launch this) |
 
@@ -306,7 +324,7 @@ Replay it with `pytest tests/test_bracket_benchmark.py`; rebuild the media with
 Most things worth designing are more than one solid. Model every part where it
 sits when assembled, name it, and say how it turns to print. The run checks each
 printed object on its own, measures the gaps between parts, gives each colour its
-own filament on the X2D's two nozzles, and slices all of it into one project.
+own filament (on the X2D's two nozzles, or the A1's one), and slices all of it into one project.
 
 ```python
 c = params["fit"]["slide"]                       # this printer's slide clearance
