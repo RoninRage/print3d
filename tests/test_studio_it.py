@@ -161,3 +161,19 @@ def test_a1_cube_slice(tmp_path: Path, cube_stl: Path):
     assert report["status"] == "ready_for_review", report["advice"]
     assert report["printer"]["id"] == "a1-0.4"
     assert report["slice_metrics"]["layer_count"] == 100
+
+
+def test_a1_lidded_box_in_three_colours(tmp_path: Path):
+    from print3d.printers import get_printer
+
+    script = Path(__file__).parent / "fixtures" / "lidded_box_inlay.py"
+    report = run_job("a lidded box", script=script, jobs_dir=tmp_path, execute=True,
+                     printer=get_printer("a1-0.4"))
+    assert report["status"] == "ready_for_review", report["advice"]
+    assert [f["color"] for f in report["filaments"]] == ["white", "blue", "red"]
+    assert all(f["used_g"] for f in report["filaments"])
+    assert report["slice_metrics"]["plates"] == 2
+    [fit] = report["fits"]
+    assert fit["verdict"] == "ok"
+    [colours] = [n for n in report["advice"] if n["code"] == "colours"]
+    assert colours["severity"] == "note" and "one nozzle" in colours["message"]
